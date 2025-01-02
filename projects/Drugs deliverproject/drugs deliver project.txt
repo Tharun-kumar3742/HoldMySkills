@@ -1,0 +1,80 @@
+import time
+import RPi.GPIO as GPIO
+from adafruit_ads1x15.analog_in import AnalogIn
+from adafruit_ads1x15.ads1015 import ADS1015
+import board
+import busio
+
+# Stepper motor setup
+STEP_PIN = 18
+DIR_PIN = 23
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(STEP_PIN, GPIO.OUT)
+GPIO.setup(DIR_PIN, GPIO.OUT)
+
+# I2C setup for sensors
+i2c = busio.I2C(board.SCL, board.SDA)
+ads = ADS1015(i2c)
+gas_sensor = AnalogIn(ads, 0)  # Gas weight detection sensor
+temp_sensor = AnalogIn(ads, 1)  # Temperature sensor
+body_wet_sensor = AnalogIn(ads, 2)  # Body wetness sensor
+
+def rotate_motor(steps, direction):
+    """Control the stepper motor."""
+    GPIO.output(DIR_PIN, GPIO.HIGH if direction == "CW" else GPIO.LOW)
+    for _ in range(steps):
+        GPIO.output(STEP_PIN, GPIO.HIGH)
+        time.sleep(0.001)
+        GPIO.output(STEP_PIN, GPIO.LOW)
+        time.sleep(0.001)
+
+def deliver_anesthesia(total_time, interval=10):
+    """Deliver anesthesia in intervals of 10 ml."""
+    # Calculate total intervals
+    total_intervals = total_time // interval
+    steps_per_10ml = 200  # Adjust based on syringe and motor calibration
+    
+    for i in range(total_intervals):
+        print(f"Delivering 10ml - Interval {i+1}/{total_intervals}")
+        rotate_motor(steps_per_10ml, "CW")
+        time.sleep(interval)  # Wait for the interval time
+
+def read_sensors():
+    """Read and display sensor data."""
+    gas_level = gas_sensor.voltage
+    temperature = temp_sensor.voltage * 100  # Convert to Celsius (based on sensor)
+    body_wetness = body_wet_sensor.voltage
+    
+    print(f"Gas Level: {gas_level:.2f} V")
+    print(f"Temperature: {temperature:.2f} °C")
+    print(f"Body Wetness: {body_wetness:.2f} V")
+    
+    return gas_level, temperature, body_wetness
+
+def main():
+    try:
+        # Set operation time in minutes
+        total_time_minutes = float(input("Enter operation time (minutes): "))
+        total_time_seconds = total_time_minutes * 60
+
+        print("Starting anesthesia delivery...")
+        deliver_anesthesia(total_time_seconds)
+        
+        print("Monitoring sensors...")
+        while total_time_seconds > 0:
+            gas_level, temp, wetness = read_sensors()
+            if gas_level < 1.0:  # Example threshold for low gas
+                print("Warning: Low gas detected!")
+            time.sleep(5)
+            total_time_seconds -= 5
+        
+        print("Operation complete. Anesthesia delivery stopped.")
+    
+    except KeyboardInterrupt:
+        print("Program interrupted.")
+    
+    finally:
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()

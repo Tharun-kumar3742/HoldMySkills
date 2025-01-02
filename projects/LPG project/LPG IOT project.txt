@@ -1,0 +1,94 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+#include <Stepper.h>
+
+// Pin assignments
+#define gasSensorPin A0
+#define fanPin 3
+#define motorPin1 8
+#define motorPin2 9
+#define motorPin3 10
+#define motorPin4 11
+
+// LCD display
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Address 0x27 for 16 chars and 2 lines
+
+// GSM
+SoftwareSerial gsmSerial(7, 6); // RX, TX pins for GSM module
+String phoneNumber = "xxxxxxx757"; // Enter your phone number here
+
+// Stepper motor setup
+Stepper stepper(2048, motorPin1, motorPin2, motorPin3, motorPin4);
+
+void setup() {
+  // Initialize serial communications
+  Serial.begin(9600);
+  gsmSerial.begin(9600);
+  
+  // Initialize LCD
+  lcd.begin();
+  lcd.print("System Init...");
+  delay(2000);
+  
+  // Initialize gas sensor pin
+  pinMode(gasSensorPin, INPUT);
+  
+  // Initialize exhaust fan pin
+  pinMode(fanPin, OUTPUT);
+  
+  // Set stepper motor speed
+  stepper.setSpeed(15); // Adjust speed as per requirement
+}
+
+void loop() {
+  int gasLevel = analogRead(gasSensorPin); // Read gas sensor value
+  lcd.clear();
+  lcd.print("Gas Level: ");
+  lcd.print(gasLevel);
+  delay(1000);
+  
+  // If gas level is higher than the threshold (indicating a leak)
+  if (gasLevel > 300) { // Adjust this threshold as needed
+    // Send SMS notification
+    sendSMS("Gas is leaking");
+    
+    // Close valve using stepper motor
+    closeValve();
+    
+    // Turn on exhaust fan
+    digitalWrite(fanPin, HIGH);
+    
+    // Display warning on LCD
+    lcd.clear();
+    lcd.print("Gas Leak Detected!");
+    delay(2000);
+    
+    // Send SMS notification for valve closure
+    sendSMS("The valve is closed");
+  } else {
+    // If no gas detected, turn off the fan
+    digitalWrite(fanPin, LOW);
+  }
+}
+
+void sendSMS(String message) {
+  gsmSerial.print("AT+CMGF=1\r"); // Set SMS text mode
+  delay(100);
+  gsmSerial.print("AT+CMGS=\"");
+  gsmSerial.print(phoneNumber);
+  gsmSerial.print("\"\r");
+  delay(100);
+  gsmSerial.print(message);
+  delay(100);
+  gsmSerial.write(26); // Send Ctrl+Z to send SMS
+  delay(100);
+}
+
+void closeValve() {
+  // Rotate stepper motor to close valve
+  for (int i = 0; i < 512; i++) { // Adjust the steps for the required position
+    stepper.step(1);
+    delay(10);
+  }
+}

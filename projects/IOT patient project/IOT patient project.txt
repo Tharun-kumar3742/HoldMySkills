@@ -1,0 +1,83 @@
+#include <SPI.h>
+#include <WiFiEsp.h>
+#include <WiFiEspClient.h>
+#include <WiFiEspUdp.h>
+#include <BlynkSimpleEsp8266.h>
+#include <ThingSpeak.h>
+
+// WiFi credentials
+char ssid[] = "Your_WiFi_SSID"; // Replace with your WiFi name
+char pass[] = "Your_WiFi_Password"; // Replace with your WiFi password
+int status = WL_IDLE_STATUS;
+
+// ThingSpeak
+WiFiEspClient client;
+unsigned long myChannelNumber = YOUR_THINGSPEAK_CHANNEL_ID; // Replace with your ThingSpeak channel ID
+const char *myWriteAPIKey = "YOUR_THINGSPEAK_WRITE_API_KEY"; // Replace with your ThingSpeak API key
+
+// Blynk
+char auth[] = "YOUR_BLYNK_AUTH_TOKEN"; // Replace with your Blynk auth token
+
+// Sensors pins
+#define heartbeatPin A0
+#define ecgPin A1
+#define tempPin A2
+#define fallPin 7 // Digital pin for fall detection
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
+
+  // Initialize WiFi
+  Serial.println("Initializing WiFi...");
+  WiFi.init(&Serial);
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi shield not present");
+    while (true);
+  }
+
+  // Attempt to connect to WiFi
+  while (status != WL_CONNECTED) {
+    Serial.print("Connecting to WiFi...");
+    status = WiFi.begin(ssid, pass);
+    delay(5000);
+  }
+  Serial.println("Connected to WiFi!");
+
+  // Initialize ThingSpeak
+  ThingSpeak.begin(client);
+
+  // Initialize Blynk
+  Blynk.begin(auth, ssid, pass);
+
+  // Initialize fall detection pin
+  pinMode(fallPin, INPUT);
+}
+
+void loop() {
+  // Read sensor values
+  int heartbeat = analogRead(heartbeatPin);
+  int ecg = analogRead(ecgPin);
+  float temperature = analogRead(tempPin) * 0.48828125; // Assuming TMP36, adjust as needed
+  int fall = digitalRead(fallPin);
+
+  // Send data to ThingSpeak
+  ThingSpeak.setField(1, heartbeat);
+  ThingSpeak.setField(2, ecg);
+  ThingSpeak.setField(3, temperature);
+  int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+  if (x == 200) {
+    Serial.println("Data sent to ThingSpeak successfully");
+  } else {
+    Serial.println("Failed to send data to ThingSpeak");
+  }
+
+  // Fall detection notification via Blynk
+  if (fall == HIGH) {
+    Blynk.notify("Fall detected! Immediate attention needed.");
+    Serial.println("Fall detected!");
+  }
+
+  // Small delay to avoid flooding the server
+  delay(2000);
+}
